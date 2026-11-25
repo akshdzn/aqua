@@ -27,6 +27,10 @@ function GradientSurface({
   idPrefix: string;
   theme: AppTheme;
 }) {
+  const cx = width / 2;
+  const cy = height / 2;
+  const halfSpan = (width + height) / 4;
+
   return (
     <Svg
       width={width}
@@ -39,7 +43,14 @@ function GradientSurface({
           <Stop offset="0" stopColor={theme.buttonGradientTop} stopOpacity="1" />
           <Stop offset="1" stopColor={theme.buttonGradientBottom} stopOpacity="1" />
         </LinearGradient>
-        <LinearGradient id={`${idPrefix}-stroke`} x1="0" y1="1" x2="1" y2="0">
+        <LinearGradient
+          id={`${idPrefix}-stroke`}
+          gradientUnits="userSpaceOnUse"
+          x1={cx - halfSpan}
+          y1={cy + halfSpan}
+          x2={cx + halfSpan}
+          y2={cy - halfSpan}
+        >
           <Stop offset="0" stopColor={theme.buttonBorder} stopOpacity="0" />
           <Stop offset="0.5" stopColor={theme.buttonBorder} stopOpacity="1" />
           <Stop offset="1" stopColor={theme.buttonBorder} stopOpacity="0" />
