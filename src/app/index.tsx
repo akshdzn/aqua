@@ -1,106 +1,198 @@
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BackHandler,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Animated, {
+  Easing,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ChatBubble, ChatMessage } from "../components/ChatBubble";
 import { ChatInput } from "../components/ChatInput";
+import { HomeScreen } from "../components/HomeScreen";
 import { TopBar } from "../components/TopBar";
 import { useAppTheme } from "../constants/theme";
+import {
+  addMessage,
+  ChatSummary,
+  createChat,
+  getChats,
+  getMessages,
+} from "../db/database";
 
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: "1",
-    role: "user",
-    content: "how to take a screenshot using rust code",
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "The easiest route is the `screenshots` crate (cross-platform), or `xcap` which is its actively maintained successor. Here's how to do it with `xcap`.\n\n**Notes**\n• The returned image is an `image::RgbaImage`, so you can crop, resize, or encode it with the `image` crate.\n• **Linux:** works on X11 out of the box. On Wayland, capture goes through the XDG desktop portal/PipeWire, so you may need extra system packages (such as `libpipewire` and `libgbm` dev headers) and a permission prompt will appear.\n• **macOS:** you need to grant Screen Recording permission to your terminal or app in System Settings.\n• **Windows:** works without extra setup.",
-  },
-  {
-    id: "3",
-    role: "user",
-    content:
-      "What's an efficient way to run lightweight ai models in the web browser",
-  },
-  {
-    id: "4",
-    role: "assistant",
-    content:
-      "The most efficient options today, roughly in order of preference:\n\n1. **WebGPU-based runtimes** (best performance)\n• **Transformers.js** (Hugging Face): easiest start, runs ONNX models with WebGPU or WASM fallback. Great for embeddings, classification, speech, small vision models.\n• **WebLLM** (MLC): runs quantized LLMs (Llama, Qwen, Gemma, Phi) fully in-browser with WebGPU. OpenAI-style API.\n• **ONNX Runtime Web**: more control; supports WebGPU, WebGL, and WASM backends.\n\n2. **WASM-only (works everywhere, slower)**\n• **llama.cpp / wllama** and **whisper.cpp** compiled to WebAssembly. Good for broad compatibility when WebGPU isn't available.",
-  },
-];
+const TRANSITION_CONFIG = {
+  duration: 320,
+  easing: Easing.out(Easing.cubic),
+};
 
-export default function ChatScreen() {
+export default function MainScreen() {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const theme = useAppTheme();
   const listRef = useRef<FlatList<ChatMessage>>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+
+  const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [lastChat, setLastChat] = useState<ChatSummary | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
 
-  const handleSend = () => {
-    const trimmed = inputText.trim();
-    if (!trimmed) return;
+  // 0 = Home screen, 1 = Chat screen
+  const progress = useSharedValue(0);
 
-    const newMessage: ChatMessage = {
-      id: String(Date.now()),
-      role: "user",
-      content: trimmed,
+  useEffect(() => {
+    let active = true;
+    getChats().then((rows) => {
+      if (active) setChats(rows);
+    });
+    return () => {
+      active = false;
     };
+  }, []);
 
-    setMessages((prev) => [...prev, newMessage]);
+  const openChat = useCallback(
+    async (chat: ChatSummary) => {
+      Keyboard.dismiss();
+      setLastChat(chat);
+      setIsChatOpen(true);
+      progress.set(withTiming(1, TRANSITION_CONFIG));
+
+      const chatMessages = await getMessages(chat.id);
+      setMessages(chatMessages);
+    },
+    [progress]
+  );
+
+  const closeChat = useCallback(() => {
+    Keyboard.dismiss();
+    setIsChatOpen(false);
+    progress.set(withTiming(0, TRANSITION_CONFIG));
+  }, [progress]);
+
+  useEffect(() => {
+    if (!isChatOpen) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeChat();
+      return true;
+    });
+    return () => sub.remove();
+  }, [isChatOpen, closeChat]);
+
+  const handleLeftPress = useCallback(() => {
+    if (isChatOpen) {
+      closeChat();
+    } else if (lastChat) {
+      openChat(lastChat);
+    }
+  }, [isChatOpen, lastChat, closeChat, openChat]);
+
+  const handleNewChat = useCallback(async () => {
+    const newChat = await createChat();
+    const updatedChats = await getChats();
+    setChats(updatedChats);
+    await openChat(newChat);
+  }, [openChat]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = inputText.trim();
+    if (!trimmed || !lastChat) return;
+
     setInputText("");
+    const saved = await addMessage(lastChat.id, "user", trimmed);
+    setMessages((prev) => [...prev, saved]);
+    const updatedChats = await getChats();
+    setChats(updatedChats);
+
     requestAnimationFrame(() => {
       listRef.current?.scrollToEnd({ animated: true });
     });
-  };
+  }, [inputText, lastChat]);
+
+  const chatSheetAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY: interpolate(progress.value, [0, 1], [windowHeight, 0]),
+      },
+    ],
+  }));
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.background }]}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      <FlatList
-        ref={listRef}
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <ChatBubble message={item} />}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        contentContainerStyle={[
-          styles.listContent,
-          {
-            paddingTop: insets.top + 88,
-            paddingBottom: insets.bottom + 140,
-          },
+    <View style={[styles.root, { backgroundColor: theme.background }]}>
+      <HomeScreen chats={chats} onSelectChat={openChat} />
+
+      <Animated.View
+        style={[
+          styles.chatOverlay,
+          { backgroundColor: theme.background },
+          chatSheetAnimatedStyle,
         ]}
-        showsVerticalScrollIndicator={false}
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-      />
+        pointerEvents={isChatOpen ? "auto" : "none"}
+      >
+        <KeyboardAvoidingView
+          style={styles.keyboardContainer}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <ChatBubble message={item} />}
+            ItemSeparatorComponent={() => <View style={styles.separator} />}
+            contentContainerStyle={[
+              styles.listContent,
+              {
+                paddingTop: insets.top + 88,
+                paddingBottom: insets.bottom + 140,
+              },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardDismissMode="interactive"
+            keyboardShouldPersistTaps="handled"
+          />
+
+          <ChatInput
+            value={inputText}
+            onChangeText={setInputText}
+            onSend={handleSend}
+          />
+        </KeyboardAvoidingView>
+      </Animated.View>
 
       <TopBar
-        modelName="Qwen 2.5 Coder"
-        onBackPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+        progress={progress}
+        isChatOpen={isChatOpen}
+        showLeftButton={isChatOpen || lastChat !== null}
+        modelName={lastChat?.modelName ?? "Qwen 2.5 Coder"}
+        onLeftPress={handleLeftPress}
+        onMorePress={isChatOpen ? undefined : handleNewChat}
       />
-
-      <ChatInput
-        value={inputText}
-        onChangeText={setInputText}
-        onSend={handleSend}
-      />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
+    flex: 1,
+  },
+  chatOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 10,
+  },
+  keyboardContainer: {
     flex: 1,
   },
   listContent: {
