@@ -118,10 +118,13 @@ export default function MainScreen() {
     });
   }, [inputText, lastChat]);
 
+  const hiddenOffset = windowHeight + insets.top + insets.bottom + 100;
+
   const chatSheetAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.02, 1], [0, 1, 1]),
     transform: [
       {
-        translateY: interpolate(progress.value, [0, 1], [windowHeight, 0]),
+        translateY: interpolate(progress.value, [0, 1], [hiddenOffset, 0]),
       },
     ],
   }));

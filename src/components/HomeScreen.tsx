@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from "react";
 import {
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -12,6 +14,8 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { MoreH, Search } from "reicon-react-native";
 import { useAppTheme } from "../constants/theme";
 import { ChatSummary } from "../db/database";
+
+const HOME_HEADER_BG = require("../../assets/images/home-header-bg.png");
 
 interface HomeScreenProps {
   chats: ChatSummary[];
@@ -23,8 +27,11 @@ interface HomeScreenProps {
  */
 export function HomeScreen({ chats, onSelectChat }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const theme = useAppTheme();
   const [query, setQuery] = useState("");
+  const [headerHeight, setHeaderHeight] = useState(0);
+  const bottomFadeHeight = Math.max(insets.bottom, 16) + 160;
 
   const filteredChats = useMemo(() => {
     const trimmed = query.trim().toLowerCase();
@@ -34,13 +41,47 @@ export function HomeScreen({ chats, onSelectChat }: HomeScreenProps) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={[styles.brandTitle, { color: theme.text }]}>AQUA</Text>
+      <View
+        onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        style={[
+          styles.header,
+          { paddingTop: insets.top + 12 },
+        ]}
+      >
+        <Image
+          source={HOME_HEADER_BG}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
+        {headerHeight > 0 && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={windowWidth} height={headerHeight}>
+              <Defs>
+                <LinearGradient id="home-header-fade" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0" stopColor={theme.background} stopOpacity="0" />
+                  <Stop offset="0.5" stopColor={theme.background} stopOpacity="0.2" />
+                  <Stop offset="1" stopColor={theme.background} stopOpacity="1" />
+                </LinearGradient>
+              </Defs>
+              <Rect
+                x={0}
+                y={0}
+                width={windowWidth}
+                height={headerHeight}
+                fill="url(#home-header-fade)"
+              />
+            </Svg>
+          </View>
+        )}
+        <View style={styles.brandRow}>
+          <Text style={[styles.brandTitle, { color: theme.text }]}>AQUA</Text>
+          <Text style={[styles.brandBadge, { color: theme.text }]}>AI</Text>
+        </View>
       </View>
 
       <View style={[styles.searchBar, { backgroundColor: theme.surface }]}>
         <View style={styles.searchIcon}>
-          <Search size={24} weight="Outline" color={theme.text} />
+          <Search size={20} weight="Outline" color={theme.text} />
         </View>
         <TextInput
           value={query}
@@ -98,11 +139,11 @@ export function HomeScreen({ chats, onSelectChat }: HomeScreenProps) {
       <View
         style={[
           styles.bottomFade,
-          { height: Math.max(insets.bottom, 16) + 120 },
+          { height: bottomFadeHeight },
         ]}
         pointerEvents="none"
       >
-        <Svg width="100%" height="100%">
+        <Svg width={windowWidth} height={bottomFadeHeight}>
           <Defs>
             <LinearGradient id="home-bottom-fade" x1="0" y1="0" x2="0" y2="1">
               <Stop offset="0" stopColor={theme.background} stopOpacity="0" />
@@ -110,7 +151,13 @@ export function HomeScreen({ chats, onSelectChat }: HomeScreenProps) {
               <Stop offset="1" stopColor={theme.background} stopOpacity="1" />
             </LinearGradient>
           </Defs>
-          <Rect x="0" y="0" width="100%" height="100%" fill="url(#home-bottom-fade)" />
+          <Rect
+            x={0}
+            y={0}
+            width={windowWidth}
+            height={bottomFadeHeight}
+            fill="url(#home-bottom-fade)"
+          />
         </Svg>
       </View>
     </View>
@@ -122,8 +169,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    overflow: "hidden",
+    justifyContent: "flex-end",
     alignItems: "center",
-    paddingBottom: 18,
+    paddingBottom: 32,
+  },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    gap: 2,
   },
   brandTitle: {
     fontFamily: "AlloVariable",
@@ -131,11 +186,17 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
+  brandBadge: {
+    fontFamily: "AlloVariable",
+    fontSize: 13,
+    fontWeight: "800",
+  },
   searchBar: {
-    marginHorizontal: 22,
+    marginTop: 12,
+    marginHorizontal: 16,
     height: 41,
     borderRadius: 57,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -146,12 +207,12 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontFamily: "AlloVariable",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "500",
     paddingVertical: 0,
   },
   listContent: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 16,
     paddingTop: 20,
   },
   separator: {
@@ -159,7 +220,7 @@ const styles = StyleSheet.create({
   },
   chatRow: {
     height: 43,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -177,7 +238,7 @@ const styles = StyleSheet.create({
   chatTitle: {
     flex: 1,
     fontFamily: "AlloVariable",
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "400",
     opacity: 0.8,
   },
@@ -198,5 +259,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 1,
   },
 });

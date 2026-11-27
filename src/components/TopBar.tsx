@@ -73,7 +73,7 @@ function GradientSurface({
         ry={borderRadius}
         fill={`url(#${idPrefix}-fill)`}
         stroke={`url(#${idPrefix}-stroke)`}
-        strokeWidth={2}
+        strokeWidth={1}
       />
     </Svg>
   );
